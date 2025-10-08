@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { createBot, createProvider, createFlow, addKeyword, utils } from '@builderbot/bot'
+import { createBot, createProvider, createFlow, addKeyword, utils, EVENTS } from '@builderbot/bot'
 import { MemoryDB as Database } from '@builderbot/bot'
 import { BaileysProvider as Provider } from '@builderbot/provider-baileys'
 
@@ -59,18 +59,18 @@ const fullSamplesFlow = addKeyword<Provider, Database>(['samples', utils.setEven
     })
 
 const main = async () => {
-    const adapterFlow = createFlow([welcomeFlow, registerFlow, fullSamplesFlow])
-    
-    const adapterProvider = createProvider(Provider)
-    const adapterDB = new Database()
+        const adapterFlow = createFlow([welcomeFlow, registerFlow, fullSamplesFlow])
+        
+        const adapterProvider = createProvider(Provider)
+        const adapterDB = new Database()
 
-    const { handleCtx, httpServer } = await createBot({
-        flow: adapterFlow,
-        provider: adapterProvider,
-        database: adapterDB,
-    })
+        const { handleCtx, httpServer } = await createBot({
+            flow: adapterFlow,
+            provider: adapterProvider,
+            database: adapterDB,
+        })
 
-    adapterProvider.server.post(
+        adapterProvider.server.post(
         '/v1/messages',
         handleCtx(async (bot, req, res) => {
             const { number, name, urlMedia } = req.body
@@ -115,15 +115,32 @@ const main = async () => {
     adapterProvider.server.post(
         '/v1/welcome_pdf',
         handleCtx(async (bot, req, res) => {
-            console.log('>>>>>>>>>>>')
+            console.log('📨 Received WhatsApp send request')
             const { number, name, pdf_url } = req.body
             const message = `Welcome ${name}`
-            await bot.sendMessage(number, message, { media: pdf_url })
-            return res.end('sent')
+            
+            try {
+                console.log(`Sending PDF to ${number}`)
+                console.log(`PDF URL: ${pdf_url}`)
+                
+                // Send PDF via WhatsApp (S3 URLs are HTTPS and work directly)
+                await bot.sendMessage(number, message, { media: pdf_url })
+                
+                console.log('✅ PDF sent successfully!')
+                return res.end('sent')
+            } catch (error: any) {
+                console.error('❌ Error sending WhatsApp message:', error)
+                res.writeHead(500, { 'Content-Type': 'application/json' })
+                return res.end(JSON.stringify({ error: error?.message || 'Unknown error' }))
+            }
         })
     )
 
-    httpServer(+PORT)
+        console.log(`🌐 Starting HTTP server on port ${PORT}...`)
+        httpServer(+PORT)
+        console.log(`✅ Server is running on http://localhost:${PORT}`)
+        console.log('📱 Waiting for WhatsApp connection...')
+    
 }
 
 main()
